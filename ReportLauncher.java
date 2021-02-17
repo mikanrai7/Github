@@ -26,6 +26,7 @@ if(null != jr){
             QueryOptions qo = new QueryOptions();
             Filter ft = Filter.eq("parent",file);
             qo.addFilter(ft);
+            qo.addOrdering("fileIndex",true)
         }
     }
 }
