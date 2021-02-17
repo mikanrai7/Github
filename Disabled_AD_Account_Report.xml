@@ -1,0 +1,169 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Rule PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Rule language="beanshell" name="Disabled_AD_Account_Report">
+<Signature returnType="String">
+<Inputs>
+<Argument name="log" type="org.apache.commons.logging.Log">
+<Description>The log object associated with the SailPointContext.</Description>
+</Argument>
+<Argument name="context" type="sailpoint.api.SailPointContext">
+<Description>A sailpoint.api.SailPointContext object that can be used to query the database if necessary.</Description>
+</Argument>
+<Argument name="config" type="java.util.Map">
+<Description>Map containing the CSV input parameters.</Description>
+</Argument>
+<Argument name="taskResult" type="sailpoint.object.TaskResult">
+<Description>Task result object.</Description>
+</Argument>
+<Argument name="taskMonitor" type="sailpoint.task.TaskMonitor">
+<Description>Task monitor object.</Description>
+</Argument>
+</Inputs>
+<Returns>
+<Argument name="result">
+<Description>Result of the operation.</Description>
+</Argument>
+</Returns>
+</Signature>
+<Source>
+import sailpoint.object.*;
+import java.util.*;
+import java.time.*;
+import sailpoint.api.*;
+import org.apache.log4j.Logger;
+import java.io.FileWriter;
+import sailpoint.object.TaskResult.CompletionStatus;
+
+String APP_NAME = "Oracle Application";
+String FILE_NAME = "Disabled_Accounts_Report.csv";
+String FILE_DESTINATION = "E:\\Dexperts Files\\Tasks\\Nisha's Task\\Disable Account Report\\";
+String DELIMITER = ",";
+String LINE_BREAK = "\n";
+Boolean firstRun = false;
+int dataCount = 0;
+
+public LinkedList getLatestDisabledAcountInfo(){
+LinkedList data = new LinkedList();
+Custom custom = context.getObjectByName(Custom.class,"Disabled_AD_Account_Info");
+List ids = null;
+List idsToAdd = new ArrayList();
+if(custom!=null &amp;&amp; custom.getList("linkids")!=null &amp;&amp; !custom.getList("linkids").isEmpty()){
+ids = custom.getList("linkids");
+idsToAdd.addAll(ids);
+}else{
+ids = new ArrayList();
+firstRun = true;
+}
+List disabledLinks = new ArrayList();
+QueryOptions q = new QueryOptions();
+Filter appFilter = Filter.and(Filter.eq("application.name",APP_NAME));
+q.addFilter(appFilter);
+Iterator links = context.search(Link.class,q);
+while(links.hasNext()){
+Link link = (Link)links.next();
+if(link!=null &amp;&amp; link.isDisabled() &amp;&amp; !ids.contains(link.getId())){
+disabledLinks.add(link.getId());
+}
+}
+if(!disabledLinks.isEmpty()){
+Filter finalFilter = Filter.and(Filter.in("id",disabledLinks));
+QueryOptions queryOptions = new QueryOptions();
+queryOptions.addFilter(finalFilter);
+
+Iterator itr = context.search(Link.class,queryOptions);
+while(itr.hasNext()){
+String accountName = "";
+String username = "";
+String firstname = "";
+String lastname = "";
+Link link = (Link)itr.next();
+if(link!=null){
+accountName = link.getNativeIdentity();
+Identity identity = link.getIdentity();
+if(identity!=null){
+username = identity.getName();
+firstname = identity.getFirstname();
+lastname = identity.getLastname();
+LinkedHashMap innerMap = new LinkedHashMap();
+innerMap.put("identity",username);
+innerMap.put("firstname",firstname);
+innerMap.put("lastname",lastname);
+innerMap.put("accountName",accountName);
+data.add(innerMap);
+idsToAdd.add(link.getId());
+dataCount = dataCount+1;
+}
+}
+}
+
+if(idsToAdd!=null &amp;&amp; !idsToAdd.isEmpty()){
+custom.put("linkids",idsToAdd);
+context.saveObject(custom);
+context.commitTransaction();
+}
+}
+return data;
+}
+
+public String createCSVString(boolean needsHeader, LinkedList data){
+StringBuilder sb = new StringBuilder();
+if(needsHeader==true){
+LinkedList headers = new LinkedList();
+headers.add("Identity");
+headers.add("Firstname");
+headers.add("Lastname");
+headers.add("Account Name");
+sb.append(String.join(DELIMITER,headers));
+sb.append(LINE_BREAK);
+}
+for(LinkedHashMap map : data){
+StringBuilder values = new StringBuilder();
+for(Map.Entry entry : map.entrySet()) {
+values.append(entry.getValue());
+values.append(DELIMITER);
+}
+values.deleteCharAt((values.toString().length())-1);
+values.append(LINE_BREAK);
+sb.append(values);
+}
+return sb.toString();
+}
+
+public void exportDataToFile(String data){
+File fileLocation = new File(FILE_DESTINATION+FILE_NAME);
+FileWriter writer = null;
+if(firstRun==true){
+writer = new FileWriter(fileLocation);
+}else{
+writer = new FileWriter(fileLocation,true);
+}
+writer.append(data);
+writer.flush();
+writer.close();
+}
+
+public void init(){
+LinkedList data = getLatestDisabledAcountInfo();
+if(data!=null &amp;&amp; !data.isEmpty()){
+String csvData = createCSVString(firstRun,data);
+if(csvData!=null){
+exportDataToFile(csvData);
+}
+}
+}
+
+init();
+if (null != taskResult)
+{
+taskResult.setAttribute("newIdentitiesProcessed", dataCount);
+taskResult.setProgress("Success");
+taskResult.setCompletionStatus(CompletionStatus.Success);
+taskResult.setCompleted(Calendar.getInstance().getTime());
+}
+return "Success";
+
+</Source>
+</Rule>
+
+
+
